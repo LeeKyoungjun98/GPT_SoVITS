@@ -1,0 +1,47 @@
+# 가상환경
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 모델 가중치 (대용량)
+GPT_weights*/
+SoVITS_weights*/
+
+# 사전학습 모델 바이너리
+GPT_SoVITS/pretrained_models/**/*.pth
+GPT_SoVITS/pretrained_models/**/*.ckpt
+GPT_SoVITS/pretrained_models/**/*.pt
+GPT_SoVITS/pretrained_models/**/*.bin
+GPT_SoVITS/pretrained_models/**/*.model
+GPT_SoVITS/pretrained_models/models--nvidia--bigvgan_v2_24khz_100band_256x/**/*.pt
+
+# ASR 모델 바이너리
+tools/asr/models/**/*.bin
+tools/asr/models/**/*.pt
+tools/asr/models/**/*.model
+
+# 노이즈 제거 모델
+tools/denoise-model/**/*.pth
+tools/denoise-model/**/*.th
+
+# UVR5 모델
+tools/uvr5/uvr5_weights/
+
+# 로그
+*.log
+tts_server.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# 기타
+*.zip
+*.tar.gz

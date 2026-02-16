@@ -1,0 +1,167 @@
+{
+  "presets": {
+    "sample": {
+      "name": "준영",
+      "langs": {
+        "ko": {
+          "audio": "sample_speaker.wav",
+          "text": "됐어 니가 끓여주는게 제일 맛있으니까 참는거야."
+        }
+      }
+    },
+    "nZ5WsS2E2UAALki8m2V6": {
+      "name": "Ranbir M",
+      "langs": {
+        "ko": {
+          "audio": "Ranbir M.mp3",
+          "text": "당신이 내 결말을 바꿨으니, 책임져야지. 어디든 갈 수 있다고 생각하지 마."
+        },
+        "ja": {
+          "audio": "Ranbir M_ja.mp3",
+          "text": "あなたが私の結末を変えたのだから、責任を取らなきゃ。どこへでも行けるなんて思わないで。"
+        },
+        "en": {
+          "audio": "Ranbir M_en.mp3",
+          "text": "You changed my ending, so you have to take responsibility. Don't think you can just go anywhere."
+        }
+      }
+    },
+    "LfjSv1XCdZ96k4B1jNJl": {
+      "name": "Ryan",
+      "langs": {
+        "ko": {
+          "audio": "Ryan.mp3",
+          "text": "당신이 내 결말을 바꿨으니, 책임져야지. 어디든 갈 수 있다고 생각하지 마."
+        },
+        "ja": {
+          "audio": "Ryan_ja.mp3",
+          "text": "あなたが私の結末を変えたのだから、責任を取らなきゃ。どこへでも行けるなんて思わないで。"
+        },
+        "en": {
+          "audio": "Ryan_en.mp3",
+          "text": "You changed my ending, so you have to take responsibility. Don't think you can just go anywhere."
+        }
+      }
+    },
+    "9lHjugDhwqoxA5MhX0az": {
+      "name": "Anna Kim",
+      "langs": {
+        "ko": {
+          "audio": "Anna Kim.mp3",
+          "text": "당신이 내 결말을 바꿨으니, 책임져야지. 어디든 갈 수 있다고 생각하지 마."
+        },
+        "ja": {
+          "audio": "Anna Kim_ja.mp3",
+          "text": "あなたが私の結末を変えたのだから、責任を取らなきゃ。どこへでも行けるなんて思わないで。"
+        },
+        "en": {
+          "audio": "Anna Kim_en.mp3",
+          "text": "You changed my ending, so you have to take responsibility. Don't think you can just go anywhere."
+        }
+      }
+    },
+    "kmSVBPu7loj4ayNinwWM": {
+      "name": "Archie",
+      "langs": {
+        "ko": {
+          "audio": "Archie.mp3",
+          "text": "당신이 내 결말을 바꿨으니, 책임져야지. 어디든 갈 수 있다고 생각하지 마."
+        },
+        "ja": {
+          "audio": "Archie_ja.mp3",
+          "text": "あなたが私の結末を変えたのだから、責任を取らなきゃ。どこへでも行けるなんて思わないで。"
+        },
+        "en": {
+          "audio": "Archie_en.mp3",
+          "text": "You changed my ending, so you have to take responsibility. Don't think you can just go anywhere."
+        }
+      }
+    },
+    "FQ3MuLxZh0jHcZmA5vW1": {
+      "name": "Dohyeon",
+      "langs": {
+        "ko": {
+          "audio": "Dohyeon.mp3",
+          "text": "당신이 내 결말을 바꿨으니, 책임져야지. 어디든 갈 수 있다고 생각하지 마."
+        },
+        "ja": {
+          "audio": "Dohyeon_ja.mp3",
+          "text": "あなたが私の結末を変えたのだから、責任を取らなきゃ。どこへでも行けるなんて思わないで。"
+        },
+        "en": {
+          "audio": "Dohyeon_en.mp3",
+          "text": "You changed my ending, so you have to take responsibility. Don't think you can just go anywhere."
+        }
+      }
+    },
+    "goT3UYdM9bhm0n2lmKQx": {
+      "name": "Edward",
+      "langs": {
+        "ko": {
+          "audio": "Edward.mp3",
+          "text": "당신이 내 결말을 바꿨으니, 책임져야지. 어디든 갈 수 있다고 생각하지 마."
+        },
+        "ja": {
+          "audio": "Edward_ja.mp3",
+          "text": "あなたが私の結末を変えたのだから、責任を取らなきゃ。どこへでも行けるなんて思わないで。"
+        },
+        "en": {
+          "audio": "Edward_en.mp3",
+          "text": "You changed my ending, so you have to take responsibility. Don't think you can just go anywhere."
+        }
+      }
+    },
+    "iCrDUkL56s3C8sCRl7wb": {
+      "name": "Hope",
+      "langs": {
+        "ko": {
+          "audio": "Hope.mp3",
+          "text": "당신이 내 결말을 바꿨으니, 책임져야지. 어디든 갈 수 있다고 생각하지 마."
+        },
+        "ja": {
+          "audio": "Hope_ja.mp3",
+          "text": "あなたが私の結末を変えたのだから、責任を取らなきゃ。どこへでも行けるなんて思わないで。"
+        },
+        "en": {
+          "audio": "Hope_en.mp3",
+          "text": "You changed my ending, so you have to take responsibility. Don't think you can just go anywhere."
+        }
+      }
+    },
+    "ygiXC2Oa1BiHksD3WkJZ": {
+      "name": "Mathias",
+      "langs": {
+        "ko": {
+          "audio": "Mathias.mp3",
+          "text": "당신이 내 결말을 바꿨으니, 책임져야지. 어디든 갈 수 있다고 생각하지 마."
+        },
+        "ja": {
+          "audio": "Mathias_ja.mp3",
+          "text": "あなたが私の結末を変えたのだから、責任を取らなきゃ。どこへでも行けるなんて思わないで。"
+        },
+        "en": {
+          "audio": "Mathias_en.mp3",
+          "text": "You changed my ending, so you have to take responsibility. Don't think you can just go anywhere."
+        }
+      }
+    },
+    "jB1Cifc2UQbq1gR3wnb0": {
+      "name": "Bin",
+      "langs": {
+        "ko": {
+          "audio": "Bin.mp3",
+          "text": "당신이 내 결말을 바꿨으니, 책임져야지. 어디든 갈 수 있다고 생각하지 마."
+        },
+        "ja": {
+          "audio": "Bin_ja.mp3",
+          "text": "あなたが私の結末を変えたのだから、責任を取らなきゃ。どこへでも行けるなんて思わないで。"
+        },
+        "en": {
+          "audio": "Bin_en.mp3",
+          "text": "You changed my ending, so you have to take responsibility. Don't think you can just go anywhere."
+        }
+      }
+    }
+  },
+  "last_selected": "FQ3MuLxZh0jHcZmA5vW1"
+}
