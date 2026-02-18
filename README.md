@@ -155,13 +155,21 @@ Windows와 동일. 모델 파일을 서버에 복사합니다.
 
 ### 7. 백그라운드 실행
 
+**방법 1: screen 사용**
 ```bash
-# screen 사용
 screen -S tts
 ./run-server.sh
 # 빠져나오기: Ctrl+A → D
 # 다시 접속: screen -r tts
 ```
+
+**방법 2: 자동 재시작 스크립트** (Docker/컨테이너 환경 권장)
+```bash
+chmod +x run_forever.sh
+screen -dmS tts ./run_forever.sh
+# 로그 확인: screen -r tts
+```
+서버가 죽으면 자동으로 재시작됩니다 (최대 100회).
 
 ### 8. systemd 서비스 등록 (선택)
 
@@ -187,6 +195,32 @@ sudo systemctl stop gpt-sovits-tts
 ---
 
 ## API 사용법
+
+### API 키 인증
+
+서버는 API 키 인증을 지원합니다. 키가 등록되면 모든 API 접근에 인증이 필요합니다.
+
+**키 생성**:
+```bash
+./venv/bin/python tts_api_server.py --generate-key myapp
+```
+
+**키 목록 확인**:
+```bash
+./venv/bin/python tts_api_server.py --list-keys
+```
+
+**인증 비활성화** (개발/테스트용):
+```bash
+./venv/bin/python tts_api_server.py --no-auth
+```
+
+| 방식 | 인증 방법 |
+|------|-----------|
+| **REST API** | `X-API-Key: gsvtts-xxxx...` 헤더 |
+| **WebSocket** | 연결 후 첫 메시지로 `{"api_key": "gsvtts-xxxx..."}` 전송 |
+
+> 키는 `api_keys.json`에 원본 그대로 저장됩니다. 파일을 안전하게 관리하세요.
 
 ### WebSocket TTS 스트리밍
 
@@ -241,8 +275,18 @@ import asyncio
 import websockets
 import json
 
+API_KEY = "gsvtts-xxxx..."  # 서버에서 생성한 키
+
 async def tts():
     async with websockets.connect("ws://localhost:9874/ws/tts") as ws:
+        # 1) 인증 (첫 메시지)
+        await ws.send(json.dumps({"api_key": API_KEY}))
+        auth = json.loads(await ws.recv())
+        if auth.get("status") != "success":
+            print("인증 실패:", auth)
+            return
+
+        # 2) TTS 요청
         await ws.send(json.dumps({
             "text": "안녕하세요",
             "voiceId": "your_voice_id"
@@ -255,8 +299,7 @@ async def tts():
                 if data.get("status") == "complete":
                     break
             else:
-                # PCM 오디오 데이터
-                audio_data = msg
+                audio_data = msg  # PCM 오디오 데이터
 
 asyncio.run(tts())
 ```
@@ -267,20 +310,41 @@ asyncio.run(tts())
 const ws = new WebSocket("ws://localhost:9874/ws/tts");
 
 ws.onopen = () => {
-  ws.send(JSON.stringify({
-    text: "안녕하세요",
-    voiceId: "your_voice_id"
-  }));
+  // 1) 인증 (첫 메시지)
+  ws.send(JSON.stringify({ api_key: "gsvtts-xxxx..." }));
 };
 
+let authenticated = false;
 ws.onmessage = (event) => {
   if (typeof event.data === "string") {
-    console.log(JSON.parse(event.data));
+    const data = JSON.parse(event.data);
+
+    if (data.type === "auth" && data.status === "success") {
+      authenticated = true;
+      // 2) 인증 성공 후 TTS 요청
+      ws.send(JSON.stringify({
+        text: "안녕하세요",
+        voiceId: "your_voice_id"
+      }));
+      return;
+    }
+
+    console.log(data);
   } else {
     // PCM 오디오 데이터
     const audioData = event.data;
   }
 };
+```
+
+### REST API (cURL)
+
+```bash
+# 프리셋 목록 조회
+curl -H "X-API-Key: gsvtts-xxxx..." http://localhost:9874/api/presets
+
+# 프리셋 선택
+curl -X POST -H "X-API-Key: gsvtts-xxxx..." http://localhost:9874/api/presets/select/your_voice_id
 ```
 
 ---
@@ -324,11 +388,14 @@ ws.onmessage = (event) => {
 ```
 GPT_SoVITS/
 ├── tts_api_server.py          # API 서버
+├── test_tts_pipeline.py       # 테스트 클라이언트
 ├── run-api-server.bat         # Windows 실행
 ├── run-server.sh              # Linux 실행
+├── run_forever.sh             # 자동 재시작 실행 (Linux)
 ├── install.bat                # Windows 설치
 ├── install-linux.sh           # Linux 설치
 ├── setup_service.sh           # systemd 서비스 설정
+├── api_keys.json              # API 키 저장 (자동 생성)
 ├── requirements.txt           # Python 의존성
 ├── presets/                   # 음성 프리셋
 │   ├── presets.json

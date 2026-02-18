@@ -30,12 +30,13 @@ sys.path.append(os.path.join(now_dir, "GPT_SoVITS"))
 
 import torch
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, WebSocket, WebSocketDisconnect, Depends, Header, Request
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import threading
 import queue
+import secrets
 
 # 언어 감지
 try:
@@ -56,9 +57,123 @@ is_half = True if torch.cuda.is_available() else False
 # ============================================
 # 프로덕션 설정
 # ============================================
+# ============================================
+# 프로덕션 설정 (GPU에 따라 자동 조절)
+# ============================================
 MAX_CONNECTIONS = 50              # 최대 동시 WebSocket 연결 수
-MAX_CONCURRENT_TTS = 1            # 동시 TTS 처리 수 (GPU 1개 = 1)
 REQUEST_TIMEOUT = 60              # 요청 타임아웃 (초)
+
+# GPU별 동시 TTS 수 자동 설정
+def _detect_gpu_tier():
+    if not torch.cuda.is_available():
+        return 1, 40, 2  # CPU: 1 concurrent, batch 40, 2 workers
+    vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+    name = torch.cuda.get_device_properties(0).name
+    if vram_gb >= 70:  # H100 80GB, A100 80GB
+        return 4, 80, 6
+    elif vram_gb >= 30:  # A100 40GB, V100 32GB
+        return 2, 60, 4
+    elif vram_gb >= 16:  # A10, T4 16GB
+        return 2, 50, 3
+    else:  # 8GB
+        return 1, 40, 2
+
+MAX_CONCURRENT_TTS, TTS_BATCH_SIZE, _TTS_WORKERS = _detect_gpu_tier()
+logger.info(f"GPU 감지: {torch.cuda.get_device_properties(0).name if torch.cuda.is_available() else 'CPU'} "
+            f"-> 동시TTS={MAX_CONCURRENT_TTS}, 배치={TTS_BATCH_SIZE}, 워커={_TTS_WORKERS}")
+
+# ============================================
+# API 키 인증
+# ============================================
+API_KEY_FILE = os.path.join(os.path.dirname(__file__), "api_keys.json")
+AUTH_ENABLED = True
+
+class APIKeyManager:
+    """API 키 관리자 (원본 키 저장 방식)"""
+    
+    def __init__(self, keys_file: str):
+        self.keys_file = keys_file
+        self.api_keys: Dict[str, dict] = {}
+        self._load_keys()
+    
+    def _load_keys(self):
+        if os.path.exists(self.keys_file):
+            try:
+                with open(self.keys_file, "r", encoding="utf-8") as f:
+                    self.api_keys = json.load(f)
+                logger.info(f"API 키 {len(self.api_keys)}개 로드됨")
+            except Exception as e:
+                logger.error(f"API 키 파일 로드 실패: {e}")
+                self.api_keys = {}
+        else:
+            self.api_keys = {}
+            self._save_keys()
+    
+    def _save_keys(self):
+        try:
+            with open(self.keys_file, "w", encoding="utf-8") as f:
+                json.dump(self.api_keys, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"API 키 파일 저장 실패: {e}")
+    
+    def generate_key(self, name: str = "") -> str:
+        key = f"gsvtts-{secrets.token_hex(24)}"
+        self.api_keys[key] = {
+            "name": name or f"key_{len(self.api_keys) + 1}",
+            "created_at": datetime.now().isoformat(),
+            "last_used": None,
+            "request_count": 0
+        }
+        self._save_keys()
+        return key
+    
+    def validate_key(self, key: str) -> bool:
+        if not key or key not in self.api_keys:
+            return False
+        self.api_keys[key]["last_used"] = datetime.now().isoformat()
+        self.api_keys[key]["request_count"] += 1
+        if self.api_keys[key]["request_count"] % 100 == 0:
+            self._save_keys()
+        return True
+    
+    def revoke_key(self, key: str) -> bool:
+        if key in self.api_keys:
+            del self.api_keys[key]
+            self._save_keys()
+            return True
+        return False
+    
+    def list_keys(self) -> list:
+        result = []
+        for key, info in self.api_keys.items():
+            result.append({
+                "key_preview": f"{key[:12]}...{key[-4:]}",
+                "name": info["name"],
+                "created_at": info["created_at"],
+                "last_used": info["last_used"],
+                "request_count": info["request_count"]
+            })
+        return result
+
+api_key_manager = APIKeyManager(API_KEY_FILE)
+
+def verify_api_key(key: str) -> bool:
+    if not AUTH_ENABLED:
+        return True
+    return api_key_manager.validate_key(key)
+
+async def get_api_key_from_header(x_api_key: Optional[str] = Header(None, alias="X-API-Key")):
+    """REST API용 API 키 검증 (X-API-Key 헤더)"""
+    if not AUTH_ENABLED:
+        return "no-auth"
+    
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="API 키가 필요합니다. 'X-API-Key' 헤더를 포함해주세요.")
+    
+    if not api_key_manager.validate_key(x_api_key):
+        raise HTTPException(status_code=403, detail="유효하지 않은 API 키입니다.")
+    
+    return x_api_key
 
 # ============================================
 # TTS 속도 최적화 설정
@@ -66,15 +181,15 @@ REQUEST_TIMEOUT = 60              # 요청 타임아웃 (초)
 TTS_TOP_K = 5                     # 낮을수록 빠름 (기본: 5, 범위: 1-100)
 TTS_TOP_P = 1.0                   # Top-P 샘플링 (기본: 1.0)
 TTS_TEMPERATURE = 0.8             # 낮을수록 빠름 (기본: 0.8, 범위: 0.1-1.0)
-TTS_BATCH_SIZE = 40               # 높을수록 빠름 (기본: 40, VRAM 8GB 이상 권장)
+# TTS_BATCH_SIZE는 위에서 GPU별 자동 설정됨
 TTS_CUT_METHOD = "cut0"           # cut0:분할없음(빠름), cut1:문장, cut5:4문장
 TTS_SPEED = 1.0                   # 재생 속도 (1.0 = 기본)
 
 # 동시 처리 제한 세마포어
 tts_semaphore: Optional[asyncio.Semaphore] = None
 
-# TTS 작업용 스레드풀 (동기 TTS를 비동기로 실행)
-tts_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tts")
+# TTS 작업용 스레드풀
+tts_executor = ThreadPoolExecutor(max_workers=_TTS_WORKERS, thread_name_prefix="tts")
 
 # TTS 엔진 (전역)
 tts_engine = None
@@ -913,6 +1028,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API 키 인증 미들웨어
+PUBLIC_PATHS = {"/", "/docs", "/redoc", "/openapi.json", "/api/health"}
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    """API 키 인증 미들웨어 - X-API-Key 헤더 방식"""
+    if not AUTH_ENABLED:
+        return await call_next(request)
+    
+    if len(api_key_manager.api_keys) == 0:
+        return await call_next(request)
+    
+    if request.url.path in PUBLIC_PATHS:
+        return await call_next(request)
+    
+    api_key = request.headers.get("x-api-key", "")
+    if not api_key_manager.validate_key(api_key):
+        return JSONResponse(status_code=403, content={"detail": "유효하지 않은 API 키입니다. 'X-API-Key' 헤더를 포함해주세요."})
+    
+    return await call_next(request)
+
 
 # ============================================================
 # API 엔드포인트
@@ -1401,6 +1537,49 @@ async def websocket_tts(websocket: WebSocket):
     # 연결 수락
     await websocket.accept()
     
+    # WebSocket API 키 인증 (첫 메시지로 {"api_key": "xxx"} 전송)
+    if AUTH_ENABLED and len(api_key_manager.api_keys) > 0:
+        try:
+            auth_data = await asyncio.wait_for(websocket.receive_text(), timeout=10.0)
+            auth_message = json.loads(auth_data)
+            api_key = auth_message.get("api_key", "")
+            
+            if not api_key_manager.validate_key(api_key):
+                logger.warning(f"[{client_id}] 인증 실패")
+                await websocket.send_json({
+                    "type": "error",
+                    "code": "AUTH_FAILED",
+                    "message": "유효하지 않은 API 키입니다."
+                })
+                await websocket.close(code=4003)
+                return
+            
+            logger.info(f"[{client_id}] 인증 성공 (키: {api_key[:12]}...)")
+            await websocket.send_json({
+                "type": "auth",
+                "status": "success",
+                "message": "인증 성공"
+            })
+            
+        except asyncio.TimeoutError:
+            logger.warning(f"[{client_id}] 인증 타임아웃 (10초)")
+            await websocket.send_json({
+                "type": "error",
+                "code": "AUTH_TIMEOUT",
+                "message": "인증 타임아웃. 연결 후 10초 이내에 {\"api_key\": \"YOUR_KEY\"} 를 전송해주세요."
+            })
+            await websocket.close(code=4003)
+            return
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"[{client_id}] 인증 메시지 오류: {e}")
+            await websocket.send_json({
+                "type": "error",
+                "code": "AUTH_ERROR",
+                "message": "인증 메시지 형식 오류. {\"api_key\": \"YOUR_KEY\"} 형식으로 전송해주세요."
+            })
+            await websocket.close(code=4003)
+            return
+    
     # 연결 수 제한 체크
     if not await connection_manager.connect(websocket, client_id):
         stats = connection_manager.get_stats()
@@ -1651,11 +1830,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GPT-SoVITS TTS API Server")
     parser.add_argument("--mode", choices=["ws", "wss", "both"], default="ws",
                         help="실행 모드: ws(HTTP만), wss(HTTPS만), both(둘 다) - 기본값: ws")
-    parser.add_argument("--port", type=int, default=9874, help="WS 포트 (기본: 9874)")
-    parser.add_argument("--wss-port", type=int, default=9875, help="WSS 포트 (기본: 9875)")
+    parser.add_argument("--port", type=int, default=9010, help="WS 포트 (기본: 9010)")
+    parser.add_argument("--wss-port", type=int, default=9010, help="WSS 포트 (기본: 9010)")
     # SSL 인증서 기본 경로 (STT 서버와 공유)
-    default_ssl_key = "D:/AI/FasterWhisper/key.pem"
-    default_ssl_cert = "D:/AI/FasterWhisper/cert.pem"
+    default_ssl_key = "/home/ubuntu/Keys/key.pem"
+    default_ssl_cert = "/home/ubuntu/Keys/cert.pem"
     parser.add_argument("--ssl-key", default=default_ssl_key, help="SSL 개인키 경로")
     parser.add_argument("--ssl-cert", default=default_ssl_cert, help="SSL 인증서 경로")
     parser.add_argument("--version", type=str, default=None, 
@@ -1663,13 +1842,54 @@ if __name__ == "__main__":
     parser.add_argument("--gpt", type=str, default="", help="커스텀 GPT 모델 경로")
     parser.add_argument("--sovits", type=str, default="", help="커스텀 SoVITS 모델 경로")
     parser.add_argument("--no-autoload", action="store_true", help="모델 자동 로드 비활성화")
+    parser.add_argument("--generate-key", type=str, metavar="NAME",
+                        help="API 키 생성 후 종료 (예: --generate-key myapp)")
+    parser.add_argument("--list-keys", action="store_true", help="등록된 API 키 목록 출력")
+    parser.add_argument("--no-auth", action="store_true",
+                        help="API 키 인증 비활성화 (개발/테스트용)")
     
     args = parser.parse_args()
+    
+    # 인증 설정
+    if args.no_auth:
+        AUTH_ENABLED = False
+        logger.warning("API 키 인증이 비활성화되었습니다! (--no-auth)")
+    
+    # API 키 생성 모드
+    if args.generate_key:
+        key = api_key_manager.generate_key(args.generate_key)
+        print(f"\n  API 키 생성 완료!")
+        print(f"  Name: {args.generate_key}")
+        print(f"  Key:  {key}")
+        print(f"\n  사용법:")
+        print(f"    REST:      X-API-Key: {key}")
+        print(f"    WebSocket: 연결 후 첫 메시지로 {{\"api_key\": \"{key}\"}} 전송")
+        print()
+        exit(0)
+    
+    # API 키 목록
+    if args.list_keys:
+        keys = api_key_manager.list_keys()
+        if not keys:
+            print("\n  등록된 API 키 없음 (인증 비활성화 상태)")
+        else:
+            print(f"\n  등록된 API 키 ({len(keys)}개):")
+            for info in keys:
+                last = info['last_used'] or '사용 안함'
+                print(f"    - {info['name']} ({info['key_preview']}, 요청 {info['request_count']}회, 마지막: {last})")
+        print()
+        exit(0)
     
     PORT = args.port
     WSS_PORT = args.wss_port
     SSL_KEYFILE = args.ssl_key
     SSL_CERTFILE = args.ssl_cert
+    
+    # API 키가 하나도 없고 인증 활성화 상태면 자동 생성
+    if AUTH_ENABLED and len(api_key_manager.api_keys) == 0:
+        key = api_key_manager.generate_key("default")
+        logger.info(f"기본 API 키 생성됨: {key}")
+        logger.info(f"   이 키를 클라이언트에 제공하세요")
     
     # SSL 인증서 존재 여부 확인
     ssl_available = os.path.exists(SSL_KEYFILE) and os.path.exists(SSL_CERTFILE)
@@ -1776,6 +1996,7 @@ if __name__ == "__main__":
         print(f"  WSS: https://localhost:{WSS_PORT}")
         print(f"       wss://localhost:{WSS_PORT}/ws/tts")
     print(f"  Docs: http://localhost:{PORT}/docs")
+    print(f"  Auth: {'ON' if AUTH_ENABLED else 'OFF'} ({len(api_key_manager.api_keys)}개 키)")
     if STARTUP_MODEL["version"]:
         print(f"  Model: {STARTUP_MODEL['version']}")
         if STARTUP_MODEL["custom_gpt"]:
